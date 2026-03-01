@@ -1,0 +1,729 @@
+// ============================================================
+// Toonify — Prisma Schema
+// Version: 1.0.0
+// Compatible: PostgreSQL (Supabase)
+// Pensé pour évoluer : mobile, commentaires, forums, donations
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  USER
+  TEAM_MEMBER
+  TEAM_OWNER
+  MODERATOR
+  ADMIN
+  SUPERADMIN
+}
+
+enum MangaStatus {
+  ONGOING       // En cours de publication
+  COMPLETED     // Terminé
+  HIATUS        // En pause
+  CANCELLED     // Annulé
+  UPCOMING      // À venir
+}
+
+enum UserMangaStatus {
+  READING       // En cours
+  COMPLETED     // Terminé
+  ON_HOLD       // En pause
+  DROPPED       // Abandonné
+  PLAN_TO_READ  // Prévu
+}
+
+enum ChapterStatus {
+  DRAFT         // Brouillon (team)
+  PENDING       // En attente de validation admin
+  PUBLISHED     // Publié
+  REJECTED      // Rejeté par modération
+  DELETED       // Supprimé (soft delete)
+}
+
+enum TeamMemberRole {
+  OWNER
+  ADMIN
+  TRANSLATOR
+  PROOFREADER
+  CLEANER
+  TYPESETTER
+  MEMBER
+}
+
+enum TeamApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ReportStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum ReportType {
+  INAPPROPRIATE_CONTENT
+  COPYRIGHT_DMCA
+  SPAM
+  WRONG_INFO
+  OTHER
+}
+
+enum NotificationType {
+  NEW_CHAPTER         // Nouveau chapitre d'un manga suivi
+  TEAM_APPLICATION    // Candidature à une team
+  CHAPTER_APPROVED    // Chapitre validé par admin
+  CHAPTER_REJECTED    // Chapitre rejeté
+  NEW_COMMENT         // Nouveau commentaire sur un chapitre
+  COMMENT_REPLY       // Réponse à un commentaire
+  FORUM_REPLY         // Réponse dans un forum (futur)
+  SYSTEM              // Annonce système
+}
+
+enum ContentType {
+  MANGA
+  MANHWA
+  MANHUA
+  WEBTOON
+  ONE_SHOT
+}
+
+enum AgeRating {
+  ALL
+  TEEN
+  MATURE
+  ADULT
+}
+
+enum ReadingDirection {
+  RTL   // Droite → Gauche (manga JP)
+  LTR   // Gauche → Droite (manhwa/manhua)
+  VERTICAL // Scroll vertical (webtoon)
+}
+
+enum CommentStatus {
+  VISIBLE
+  HIDDEN    // Masqué par modération
+  DELETED   // Supprimé par l'auteur ou modération
+}
+
+enum ForumPostStatus {
+  OPEN
+  CLOSED
+  PINNED
+  DELETED
+}
+
+// ============================================================
+// UTILISATEURS
+// ============================================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  emailVerified     Boolean   @default(false)
+  username          String    @unique
+  displayName       String?
+  avatarUrl         String?
+  bio               String?
+  role              Role      @default(USER)
+  isBanned          Boolean   @default(false)
+  banReason         String?
+  bannedAt          DateTime?
+  bannedUntil       DateTime? // null = ban permanent
+  locale            String    @default("fr") // i18n future
+  timezone          String    @default("Europe/Paris")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastSeenAt        DateTime?
+
+  // Auth (Supabase Auth gère les tokens, on stocke juste les providers liés)
+  authProviders     AuthProvider[]
+
+  // Bibliothèque & lecture
+  library           UserManga[]
+  readChapters      ReadChapter[]
+  readingProgress   ReadingProgress[]
+
+  // Social
+  comments          Comment[]
+  commentLikes      CommentLike[]
+  notifications     Notification[]
+  reports           Report[]          @relation("ReportedBy")
+  reportedContent   Report[]          @relation("ReportedUser")
+
+  // Teams
+  teamMemberships   TeamMember[]
+  teamApplications  TeamApplication[]
+
+  // Forum (futur)
+  forumPosts        ForumPost[]
+  forumReplies      ForumReply[]
+
+  // Admin
+  auditLogs         AuditLog[]
+
+  // Préférences
+  preferences       UserPreferences?
+
+  @@index([email])
+  @@index([username])
+  @@index([role])
+  @@index([isBanned])
+}
+
+// Providers OAuth liés au compte (Google, GitHub...)
+model AuthProvider {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String   // "google" | "github" | "email"
+  providerId   String   // ID chez le provider
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+// Préférences utilisateur (reader, notifications, UI)
+model UserPreferences {
+  id                    String           @id @default(cuid())
+  userId                String           @unique
+  readerDirection       ReadingDirection @default(RTL)
+  readerTheme           String           @default("dark")   // "dark" | "light" | "sepia"
+  readerFitMode         String           @default("width")  // "width" | "height" | "original"
+  readerPageLayout      String           @default("single") // "single" | "double" | "scroll"
+  notifyNewChapters     Boolean          @default(true)
+  notifyCommentReplies  Boolean          @default(true)
+  notifyTeamUpdates     Boolean          @default(true)
+  notifySystem          Boolean          @default(true)
+  emailNotifications    Boolean          @default(false)
+  profilePublic         Boolean          @default(true)
+  libraryPublic         Boolean          @default(false)
+  updatedAt             DateTime         @updatedAt
+
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// MANGAS
+// ============================================================
+
+model Manga {
+  id               String       @id @default(cuid())
+  slug             String       @unique // URL-friendly
+  title            String
+  titleAlternative String[]     // Titres alternatifs / traductions
+  synopsis         String?      @db.Text
+  coverUrl         String?
+  bannerUrl        String?      // Bannière page détail (futur)
+  status           MangaStatus  @default(ONGOING)
+  contentType      ContentType  @default(MANGA)
+  ageRating        AgeRating    @default(ALL)
+  releaseYear      Int?
+  country          String?      // "JP" | "KR" | "CN"...
+  isNSFW           Boolean      @default(false)
+  viewCount        BigInt       @default(0)
+  isApproved       Boolean      @default(true) // Pour modération admin
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Source externe (MangaDex, etc.)
+  externalId       String?      // ID MangaDex si importé
+  externalSource   String?      // "mangadex" | "manual"
+
+  // Relations
+  genres           MangaGenre[]
+  tags             MangaTag[]
+  authors          MangaAuthor[]
+  artists          MangaArtist[]
+  chapters         Chapter[]
+  userLibrary      UserManga[]
+  reports          Report[]
+  
+  // Forum dédié au manga (futur)
+  forumThread      ForumThread?
+
+  @@index([slug])
+  @@index([status])
+  @@index([contentType])
+  @@index([isApproved])
+  @@index([viewCount])
+}
+
+model Genre {
+  id      String       @id @default(cuid())
+  name    String       @unique
+  slug    String       @unique
+  mangas  MangaGenre[]
+}
+
+model MangaGenre {
+  mangaId  String
+  genreId  String
+  manga    Manga  @relation(fields: [mangaId], references: [id], onDelete: Cascade)
+  genre    Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([mangaId, genreId])
+}
+
+model Tag {
+  id      String     @id @default(cuid())
+  name    String     @unique
+  slug    String     @unique
+  mangas  MangaTag[]
+}
+
+model MangaTag {
+  mangaId String
+  tagId   String
+  manga   Manga  @relation(fields: [mangaId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([mangaId, tagId])
+}
+
+model Author {
+  id     String       @id @default(cuid())
+  name   String
+  slug   String       @unique
+  bio    String?
+  mangas MangaAuthor[]
+}
+
+model MangaAuthor {
+  mangaId  String
+  authorId String
+  manga    Manga  @relation(fields: [mangaId], references: [id], onDelete: Cascade)
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([mangaId, authorId])
+}
+
+model Artist {
+  id     String        @id @default(cuid())
+  name   String
+  slug   String        @unique
+  mangas MangaArtist[]
+}
+
+model MangaArtist {
+  mangaId  String
+  artistId String
+  manga    Manga  @relation(fields: [mangaId], references: [id], onDelete: Cascade)
+  artist   Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@id([mangaId, artistId])
+}
+
+// ============================================================
+// CHAPITRES
+// ============================================================
+
+model Chapter {
+  id            String        @id @default(cuid())
+  mangaId       String
+  teamId        String?       // null = chapitre officiel/importé
+  number        Float         // Float pour 1, 1.5, 2... 
+  volume        Int?
+  title         String?
+  language      String        @default("fr") // ISO 639-1
+  status        ChapterStatus @default(PUBLISHED)
+  viewCount     BigInt        @default(0)
+  pageCount     Int           @default(0)
+  publishedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Source externe
+  externalId    String?
+  externalSource String?
+
+  // Relations
+  manga         Manga           @relation(fields: [mangaId], references: [id], onDelete: Cascade)
+  team          Team?           @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  pages         ChapterPage[]
+  readBy        ReadChapter[]
+  progress      ReadingProgress[]
+  comments      Comment[]
+  reports       Report[]
+
+  @@unique([mangaId, number, language, teamId])
+  @@index([mangaId])
+  @@index([teamId])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([language])
+}
+
+model ChapterPage {
+  id         String   @id @default(cuid())
+  chapterId  String
+  pageNumber Int
+  imageUrl   String   // URL Supabase Storage
+  width      Int?     // Pour pré-calcul layout
+  height     Int?
+  fileSize   Int?     // En bytes
+
+  chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([chapterId, pageNumber])
+  @@index([chapterId])
+}
+
+// ============================================================
+// BIBLIOTHÈQUE UTILISATEUR
+// ============================================================
+
+// Manga dans la bibliothèque d'un user
+model UserManga {
+  id          String          @id @default(cuid())
+  userId      String
+  mangaId     String
+  status      UserMangaStatus @default(READING)
+  score       Int?            // 1-10
+  notes       String?         @db.Text
+  isFavorite  Boolean         @default(false)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  manga       Manga           @relation(fields: [mangaId], references: [id], onDelete: Cascade)
+  customLists UserMangaList[]
+
+  @@unique([userId, mangaId])
+  @@index([userId])
+  @@index([status])
+}
+
+// Listes personnalisées ("Favoris", "Top Isekai"...)
+model CustomList {
+  id          String          @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  isPublic    Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Pas de FK directe vers User ici pour éviter cycle,
+  // on passe par UserManga
+  mangas      UserMangaList[]
+
+  @@index([userId])
+}
+
+model UserMangaList {
+  userMangaId  String
+  customListId String
+  addedAt      DateTime   @default(now())
+
+  userManga    UserManga  @relation(fields: [userMangaId], references: [id], onDelete: Cascade)
+  customList   CustomList @relation(fields: [customListId], references: [id], onDelete: Cascade)
+
+  @@id([userMangaId, customListId])
+}
+
+// Chapitre marqué comme lu
+model ReadChapter {
+  id         String   @id @default(cuid())
+  userId     String
+  chapterId  String
+  readAt     DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chapterId])
+  @@index([userId])
+  @@index([chapterId])
+}
+
+// Progression de lecture (page précise dans un chapitre)
+model ReadingProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  chapterId   String
+  currentPage Int      @default(1)
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chapterId])
+  @@index([userId])
+}
+
+// ============================================================
+// TEAMS DE TRADUCTION
+// ============================================================
+
+model Team {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?    @db.Text
+  logoUrl     String?
+  bannerUrl   String?
+  website     String?
+  discord     String?
+  isVerified  Boolean    @default(false) // Badge vérification admin
+  isBanned    Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  members     TeamMember[]
+  applications TeamApplication[]
+  chapters    Chapter[]
+  reports     Report[]
+
+  @@index([slug])
+  @@index([isVerified])
+}
+
+model TeamMember {
+  id        String         @id @default(cuid())
+  teamId    String
+  userId    String
+  role      TeamMemberRole @default(MEMBER)
+  joinedAt  DateTime       @default(now())
+
+  team      Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model TeamApplication {
+  id          String                @id @default(cuid())
+  teamId      String
+  userId      String
+  message     String?               @db.Text
+  status      TeamApplicationStatus @default(PENDING)
+  reviewedAt  DateTime?
+  createdAt   DateTime              @default(now())
+
+  team        Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([status])
+}
+
+// ============================================================
+// COMMENTAIRES
+// ============================================================
+
+model Comment {
+  id          String        @id @default(cuid())
+  chapterId   String
+  userId      String
+  parentId    String?       // null = commentaire racine, sinon = réponse
+  content     String        @db.Text
+  status      CommentStatus @default(VISIBLE)
+  isPinned    Boolean       @default(false)
+  likeCount   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  editedAt    DateTime?
+
+  chapter     Chapter       @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies     Comment[]     @relation("CommentReplies")
+  likes       CommentLike[]
+  reports     Report[]
+
+  @@index([chapterId])
+  @@index([userId])
+  @@index([parentId])
+  @@index([status])
+}
+
+model CommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+}
+
+// ============================================================
+// FORUM (FUTUR — tables prêtes, feature flag désactivable)
+// ============================================================
+
+// Un thread de forum par manga (discussion générale)
+model ForumThread {
+  id        String       @id @default(cuid())
+  mangaId   String       @unique
+  createdAt DateTime     @default(now())
+
+  manga     Manga        @relation(fields: [mangaId], references: [id], onDelete: Cascade)
+  posts     ForumPost[]
+}
+
+model ForumPost {
+  id        String          @id @default(cuid())
+  threadId  String
+  userId    String
+  title     String
+  content   String          @db.Text
+  status    ForumPostStatus @default(OPEN)
+  viewCount Int             @default(0)
+  isPinned  Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  thread    ForumThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replies   ForumReply[]
+  reports   Report[]
+
+  @@index([threadId])
+  @@index([userId])
+  @@index([status])
+}
+
+model ForumReply {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post      ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports   Report[]
+
+  @@index([postId])
+  @@index([userId])
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String
+  type       NotificationType
+  title      String
+  body       String?
+  isRead     Boolean          @default(false)
+  link       String?          // URL de redirection
+  metadata   Json?            // Données contextuelles flexibles
+  createdAt  DateTime         @default(now())
+
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ============================================================
+// SIGNALEMENTS / MODÉRATION
+// ============================================================
+
+model Report {
+  id            String       @id @default(cuid())
+  reportedById  String
+  reportedUserId String?     // Si signalement d'un user
+  type          ReportType
+  status        ReportStatus @default(OPEN)
+  reason        String       @db.Text
+  resolution    String?      @db.Text
+  resolvedAt    DateTime?
+  createdAt     DateTime     @default(now())
+
+  // Contenu signalé (polymorphique via champs optionnels)
+  chapterId     String?
+  commentId     String?
+  mangaId       String?
+  teamId        String?
+  forumPostId   String?
+  forumReplyId  String?
+
+  reportedBy    User         @relation("ReportedBy", fields: [reportedById], references: [id], onDelete: Cascade)
+  reportedUser  User?        @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  chapter       Chapter?     @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  comment       Comment?     @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  manga         Manga?       @relation(fields: [mangaId], references: [id], onDelete: SetNull)
+  team          Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  forumPost     ForumPost?   @relation(fields: [forumPostId], references: [id], onDelete: SetNull)
+  forumReply    ForumReply?  @relation(fields: [forumReplyId], references: [id], onDelete: SetNull)
+
+  @@index([reportedById])
+  @@index([status])
+  @@index([type])
+}
+
+// ============================================================
+// ADMIN — AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String   // "BAN_USER", "DELETE_CHAPTER", "APPROVE_TEAM"...
+  targetType String   // "User" | "Chapter" | "Team"...
+  targetId   String
+  metadata   Json?    // Détails de l'action
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  admin      User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+// ============================================================
+// SYSTÈME — ANNONCES & FEATURE FLAGS
+// ============================================================
+
+model Announcement {
+  id          String    @id @default(cuid())
+  title       String
+  content     String    @db.Text
+  isActive    Boolean   @default(true)
+  startsAt    DateTime  @default(now())
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Feature flags pour activer/désactiver des fonctionnalités
+// (forum, donations, etc.) sans redéploiement
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique // "FORUM_ENABLED" | "DONATIONS_ENABLED"
+  isEnabled   Boolean  @default(false)
+  description String?
+  updatedAt   DateTime @updatedAt
+}
