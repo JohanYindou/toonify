@@ -30,7 +30,6 @@ export async function proxy(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  console.log("middleware user:", user?.email)
   const path = request.nextUrl.pathname
 
   // Pas connecté + route protégée → redirect login
