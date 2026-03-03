@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import Image from "next/image"
 import { ReaderControls } from "@/components/manga/ReaderControls"
 import { ReaderPages } from "@/components/manga/ReaderPages"
 
