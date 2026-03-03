@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { Prisma, MangaStatus,ContentType } from "@prisma/client"
+import { Prisma, MangaStatus, ContentType } from "@prisma/client"
+
+const serializeBigInt = (data: unknown) =>
+  JSON.parse(
+    JSON.stringify(data, (_key, value) =>
+      typeof value === "bigint" ? Number(value) : value
+    )
+  )
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -8,7 +15,6 @@ export async function GET(request: Request) {
   const page = parseInt(searchParams.get("page") ?? "1")
   const limit = parseInt(searchParams.get("limit") ?? "24")
   const type = searchParams.get("type")
-  // eslint-disable-next-line
   const status = searchParams.get("status") as MangaStatus | null
   const genre = searchParams.get("genre")
   const search = searchParams.get("search")
@@ -16,6 +22,7 @@ export async function GET(request: Request) {
   const where: Prisma.MangaWhereInput = {
     isApproved: true,
     ...(type && { contentType: type as ContentType }),
+    ...(status && { status }),
     ...(search && {
       OR: [
         { title: { contains: search, mode: "insensitive" } },
@@ -42,8 +49,10 @@ export async function GET(request: Request) {
     prisma.manga.count({ where }),
   ])
 
+  const serializedMangas = serializeBigInt(mangas)
+
   return NextResponse.json({
-    mangas,
+    mangas: serializedMangas,
     total,
     page,
     totalPages: Math.ceil(total / limit),
