@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
+import { ReaderControls } from "@/components/manga/ReaderControls"
+import { ReaderPages } from "@/components/manga/ReaderPages"
 
 type Props = {
   params: Promise<{ slug: string; number: string }>
@@ -95,26 +97,17 @@ export default async function ChapterPage({ params }: Props) {
         </div>
       </div>
 
+      <ReaderControls />
+
       {/* Pages */}
       <div className="flex flex-col items-center gap-1">
         {chapter.pages.length === 0 ? (
-          <p className="py-24 text-center text-[#4A4A5A]">
-            Aucune page disponible.
-          </p>
-        ) : (
-          chapter.pages.map(page => (
-            <div key={page.id} className="relative w-full max-w-3xl">
-              <Image
-                src={page.imageUrl}
-              alt={`Page ${page.pageNumber}`}
-              width={page.width ?? 800}
-              height={page.height ?? 1200}
-              className="w-full"
-              priority={page.pageNumber <= 3}
-              />
-            </div>
-          ))
-        )}
+        <p className="py-24 text-center text-[#4A4A5A]">
+          Aucune page disponible.
+        </p>
+      ) : (
+        <ReaderPages pages={chapter.pages} />
+      )}
       </div>
 
       {/* Footer navigation */}
