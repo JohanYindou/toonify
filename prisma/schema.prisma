@@ -132,7 +132,7 @@ enum ForumPostStatus {
 // ============================================================
 
 model User {
-  id                String    @id @default(cuid())
+  id                String    @id
   email             String    @unique
   emailVerified     Boolean   @default(false)
   username          String    @unique

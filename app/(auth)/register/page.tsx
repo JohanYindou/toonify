@@ -14,15 +14,30 @@ export default function RegisterPage() {
   const supabase = createClient()
 
   async function handleRegister() {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { username } }
     })
     if (error) { setError(error.message); return }
+  
+    if (data.user) {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: data.user.id,
+          email,
+          username,
+        }),
+      })
+      if (!res.ok) {
+        setError("Erreur lors de la création du compte.")
+        return
+      }
+    }
     setSuccess(true)
   }
-
   if (success) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0C0C10]">
