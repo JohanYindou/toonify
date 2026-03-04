@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ReaderControls } from "@/components/manga/ReaderControls"
 import { ReaderPages } from "@/components/manga/ReaderPages"
+import { ReaderKeyboard } from "@/components/manga/ReaderKeyboard"
+import { ReaderProgress } from "@/components/manga/ReaderProgress"
 
 type Props = {
   params: Promise<{ slug: string; number: string }>
@@ -97,6 +99,16 @@ export default async function ChapterPage({ params }: Props) {
       </div>
 
       <ReaderControls />
+      <ReaderKeyboard
+  slug={slug}
+  prevNumber={prevChapter?.number ?? null}
+  nextNumber={nextChapter?.number ?? null}
+/>
+
+<ReaderProgress
+  chapterId={chapter.id}
+  totalPages={chapter.pageCount}
+/>
 
       {/* Pages */}
       <div className="flex flex-col items-center gap-1">

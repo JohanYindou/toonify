@@ -385,6 +385,18 @@ model ChapterPage {
   @@index([chapterId])
 }
 
+model ChapterProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  chapterId   String
+  lastPage    Int      @default(1)
+  isCompleted Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, chapterId])
+  @@map("chapter_progress")
+}
+
 // ============================================================
 // BIBLIOTHÈQUE UTILISATEUR
 // ============================================================
