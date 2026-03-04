@@ -31,6 +31,9 @@ export default async function MainLayout({
             <Link href="/library" className="text-sm text-[#8A8A9A] hover:text-white transition-colors">
               Bibliothèque
             </Link>
+            <Link href="/teams" className="text-sm text-[#8A8A9A] hover:text-white transition-colors">
+              Teams
+            </Link>
           </nav>
 
           {/* Auth */}
