@@ -16,6 +16,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Toonify — Votre univers manga, sans limites.",
   description: "Lisez, suivez et découvrez des mangas.",
+  openGraph:{
+    title: "Toonify",
+    description: "Votre univers manga, sans limites.",
+    siteName: "Toonify",
+    locale: "fr_FR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Toonify",
+    description: "Votre univers manga, sans limites.",
+  },
 }
 
 export default function RootLayout({

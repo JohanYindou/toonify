@@ -2,9 +2,43 @@ import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
+import type { Metadata } from "next"
 
 type Props = {
   params: Promise<{ slug: string }>
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
+
+  const manga = await prisma.manga.findUnique({
+    where: { slug },
+    select: {
+      title: true,
+      synopsis: true,
+      coverUrl: true,
+    },
+  })
+
+  if (!manga) {
+    return { title: "Manga introuvable — Toonify" }
+  }
+
+  return {
+    title: `${manga.title} — Toonify`,
+    description: manga.synopsis?.slice(0, 160) ?? `Lire ${manga.title} sur Toonify.`,
+    openGraph: {
+      title: manga.title,
+      description: manga.synopsis?.slice(0, 160) ?? `Lire ${manga.title} sur Toonify.`,
+      images: manga.coverUrl ? [{ url: manga.coverUrl }] : [],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: manga.title,
+      description: manga.synopsis?.slice(0, 160) ?? `Lire ${manga.title} sur Toonify.`,
+      images: manga.coverUrl ? [manga.coverUrl] : [],
+    },
+  }
 }
 
 export default async function MangaPage({ params }: Props) {
