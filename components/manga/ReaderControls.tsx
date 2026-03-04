@@ -1,6 +1,7 @@
 "use client"
 
 import { useReaderStore } from "@/store/readerStore"
+import { ReaderFullscreen } from "@/components/manga/ReaderFullscreen"
 
 export function ReaderControls() {
   const { layout, theme, zoom, setLayout, setTheme, setZoom } = useReaderStore()
@@ -79,7 +80,9 @@ export function ReaderControls() {
           ))}
         </div>
       </div>
-
+      <div className="ml-auto">
+        <ReaderFullscreen />
+      </div>
     </div>
   )
 }
