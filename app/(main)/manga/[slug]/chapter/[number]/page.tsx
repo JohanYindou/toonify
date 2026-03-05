@@ -5,6 +5,8 @@ import { ReaderControls } from "@/components/manga/ReaderControls"
 import { ReaderPages } from "@/components/manga/ReaderPages"
 import { ReaderKeyboard } from "@/components/manga/ReaderKeyboard"
 import { ReaderProgress } from "@/components/manga/ReaderProgress"
+import { createClient } from "@/lib/supabase/server"
+import { Comments } from "@/components/manga/Comments"
 
 type Props = {
   params: Promise<{ slug: string; number: string }>
@@ -55,6 +57,9 @@ export default async function ChapterPage({ params }: Props) {
     }),
   ])
 
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
   return (
     <div className="space-y-4">
 
@@ -146,7 +151,9 @@ export default async function ChapterPage({ params }: Props) {
           </Link>
         )}
       </div>
-
+      <div className="border-t border-[#2A2A38] pt-8">
+        <Comments chapterId={chapter.id} currentUserId={user?.id} />
+      </div>
     </div>
   )
 }
